@@ -26,7 +26,8 @@ const PORT = parseInt((_a = process.env.PORT) !== null && _a !== void 0 ? _a : '
 const BACKUP_FILE_PATH = process.env.BACKUP_FILE_PATH;
 const CONTENT_TYPE_JSON = { 'Content-Type': 'application/json' };
 const CONTENT_TYPE_HTML = { 'Content-Type': 'text/html' };
-function parseFile(filename, searchTerm, page = 1, size = 10) {
+const API_PATH = '/api/v1';
+function makeMoviesArray(path, searchTerm, page = 1, size = 10) {
     var _a, e_1, _b, _c;
     return __awaiter(this, void 0, void 0, function* () {
         const data = [];
@@ -34,7 +35,7 @@ function parseFile(filename, searchTerm, page = 1, size = 10) {
         const startLine = (page - 1) * size;
         const endLine = startLine + size - 1;
         const rl = readline.createInterface({
-            input: fs.createReadStream(filename),
+            input: fs.createReadStream(path),
             crlfDelay: Infinity,
         });
         try {
@@ -79,7 +80,47 @@ function parseFile(filename, searchTerm, page = 1, size = 10) {
         return data;
     });
 }
+function findMovie(path, id) {
+    var _a, e_2, _b, _c;
+    return __awaiter(this, void 0, void 0, function* () {
+        const rl = readline.createInterface({
+            input: fs.createReadStream(path),
+            crlfDelay: Infinity,
+        });
+        try {
+            for (var _d = true, rl_2 = __asyncValues(rl), rl_2_1; rl_2_1 = yield rl_2.next(), _a = rl_2_1.done, !_a;) {
+                _c = rl_2_1.value;
+                _d = false;
+                try {
+                    const line = _c;
+                    try {
+                        const movie = JSON.parse(line);
+                        if (movie.id == id) {
+                            const { id, title, description, genre, release_year } = movie;
+                            return { id, title, description, genre, release_year };
+                        }
+                    }
+                    catch (err) {
+                        console.error('Error parsing JSON:', err);
+                    }
+                }
+                finally {
+                    _d = true;
+                }
+            }
+        }
+        catch (e_2_1) { e_2 = { error: e_2_1 }; }
+        finally {
+            try {
+                if (!_d && !_a && (_b = rl_2.return)) yield _b.call(rl_2);
+            }
+            finally { if (e_2) throw e_2.error; }
+        }
+        return null;
+    });
+}
 const server = http.createServer((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _b;
     try {
         if (req.url) {
             const parsedUrl = url.parse(req.url, true);
@@ -101,7 +142,6 @@ const server = http.createServer((req, res) => __awaiter(void 0, void 0, void 0,
                 req.on('end', () => {
                     try {
                         const parsedJson = JSON.parse(data);
-                        console.log(parsedJson, 'Parsed JSON');
                         if ('message' in parsedJson) {
                             res.writeHead(200, CONTENT_TYPE_JSON);
                             res.end(JSON.stringify({ yourMessage: parsedJson.message }));
@@ -117,14 +157,32 @@ const server = http.createServer((req, res) => __awaiter(void 0, void 0, void 0,
                 });
                 return;
             }
-            if (req.method === 'GET' && parsedUrl.pathname === '/file') {
+            if (req.method === 'GET' && parsedUrl.pathname === `${API_PATH}/search`) {
                 const page = parseInt(String(parsedUrl.query.page || '')) || undefined;
                 const title = String(parsedUrl.query.title || '') || undefined;
                 if (BACKUP_FILE_PATH) {
                     try {
-                        const rawRecords = yield parseFile(BACKUP_FILE_PATH, title, page, 10);
+                        const rawRecords = yield makeMoviesArray(BACKUP_FILE_PATH, title, page, 10);
                         res.writeHead(200, CONTENT_TYPE_JSON);
-                        res.end(JSON.stringify({ records: rawRecords }));
+                        res.end(JSON.stringify(rawRecords));
+                    }
+                    catch (error) {
+                        console.error(error);
+                        res.writeHead(500, CONTENT_TYPE_JSON);
+                        res.end(JSON.stringify({ message: 'Error parsing file' }));
+                    }
+                }
+                return;
+            }
+            if (req.method === 'GET' &&
+                ((_b = parsedUrl.pathname) === null || _b === void 0 ? void 0 : _b.startsWith(`${API_PATH}/movie`))) {
+                const movieId = parsedUrl.pathname.substring(`${API_PATH}/movie`.length + 1);
+                if (BACKUP_FILE_PATH) {
+                    try {
+                        const movie = yield findMovie(BACKUP_FILE_PATH, movieId);
+                        console.log(movie);
+                        res.writeHead(200, CONTENT_TYPE_JSON);
+                        res.end(JSON.stringify(movie));
                     }
                     catch (error) {
                         console.error(error);
